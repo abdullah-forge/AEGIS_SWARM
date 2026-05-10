@@ -337,7 +337,7 @@ export default function Home() {
                 {qrResult.details?.decoded_url && (
                   <div className="mt-6 border border-[#00ffff]/30 bg-black/50 p-4 text-xs font-mono relative">
                     <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-[#00ffff] to-transparent"></div>
-                    <div className="text-[#00ffff] mb-2 font-bold tracking-widest">> EXTRACTED_PAYLOAD:</div>
+                    <div className="text-[#00ffff] mb-2 font-bold tracking-widest">&gt; EXTRACTED_PAYLOAD:</div>
                     <div className="text-white break-all">{qrResult.details.decoded_url}</div>
                   </div>
                 )}
