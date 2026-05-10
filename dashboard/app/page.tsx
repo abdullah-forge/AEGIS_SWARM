@@ -11,7 +11,7 @@ type AnalysisResult = {
   details: any;
 };
 
-const API_URL = "https://wall06-aegis-swarm-api.hf.space";
+const API_URL = "https://aegis-swarm-api.onrender.com";
 
 export default function Home() {
   const [text, setText] = useState("");
