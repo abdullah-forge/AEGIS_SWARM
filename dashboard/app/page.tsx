@@ -15,10 +15,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function Home() {
   const [text, setText] = useState("");
-  const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [loading, setLoading] = useState(false);
   const [qrFile, setQrFile] = useState<File | null>(null);
-  const [qrResult, setQrResult] = useState<AnalysisResult | null>(null);
+  const [activeReport, setActiveReport] = useState<AnalysisResult | null>(null);
+  const [reportType, setReportType] = useState<"TXT" | "FILE" | null>(null);
+  const [loading, setLoading] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
 
@@ -66,7 +66,9 @@ export default function Home() {
     modelUsed,
     titleHigh,
     titleLow,
-    memoryMatches
+    memoryMatches,
+    details,
+    similarThreats
   }: {
     verdict: string | undefined;
     confidence: number | undefined;
@@ -74,13 +76,15 @@ export default function Home() {
     titleHigh: string;
     titleLow: string;
     memoryMatches?: number;
+    details?: any;
+    similarThreats?: any[];
   }) => {
     const v = normalizeVerdict(verdict);
     const isThreat = v === "HIGH" || v === "HIGH RISK";
     
-    if (v === "HIGH" || v === "LOW" || v === "HIGH RISK" || v === "SAFE") {
+    if (v === "HIGH" || v === "LOW" || v === "HIGH RISK" || v === "SAFE" || v === "UNKNOWN") {
       return (
-        <div className={`cyber-card ${isThreat ? 'threat-high' : ''} mt-6`}>
+        <div className={`cyber-card ${isThreat ? 'threat-high' : ''} mt-6 flex-1 flex flex-col overflow-y-auto pr-2`}>
           <div className="flex justify-between items-start border-b border-white/10 pb-4 mb-4 relative">
             <div className="absolute -left-2 top-0 bottom-0 w-1 bg-current" style={{ color: isThreat ? 'var(--neon-pink)' : 'var(--neon-cyan)' }}></div>
             <h3 className={`font-black tracking-widest text-2xl pl-2 ${isThreat ? 'text-[#ff00ff] glitch-text' : 'text-[#00ffff]'}`} data-text={isThreat ? titleHigh : titleLow}>
@@ -107,6 +111,36 @@ export default function Home() {
           </div>
           
           <ConfidenceBar value={confidence} isThreat={isThreat} />
+
+          {/* Details Section */}
+          {details && Object.keys(details).length > 0 && (
+            <div className="mt-6 border-t border-white/10 pt-4">
+              <h4 className="text-[10px] text-slate-500 tracking-widest font-bold uppercase mb-3">TELEMETRY_DATA</h4>
+              <div className="grid grid-cols-1 gap-2 text-xs font-mono">
+                {Object.entries(details).map(([k, v]) => (
+                  <div key={k} className="bg-black/30 p-3 border border-white/5 break-all">
+                    <span className="text-[#00ffff]/70 mr-2 uppercase tracking-widest">{k.replace(/_/g, ' ')}:</span>
+                    <span className="text-white">{String(v)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Similar Threats */}
+          {similarThreats && similarThreats.length > 0 && (
+             <div className="mt-6 border-t border-white/10 pt-4">
+              <h4 className="text-[10px] text-slate-500 tracking-widest font-bold uppercase mb-3">MEMORY_CORE_MATCHES</h4>
+              <div className="flex flex-col gap-2 text-xs font-mono">
+                {similarThreats.map((t, i) => (
+                  <div key={i} className="bg-black/50 p-3 border border-[#fcee0a]/30">
+                    <div className="text-[#fcee0a] mb-2 font-bold tracking-widest">MATCH [{i+1}] - {t.threat_type}</div>
+                    <div className="text-slate-300 break-words opacity-80">{t.content}</div>
+                  </div>
+                ))}
+              </div>
+             </div>
+          )}
         </div>
       );
     }
@@ -120,7 +154,7 @@ export default function Home() {
   };
 
   const LoadingSkeleton = ({ isThreat = false }) => (
-    <div className={`mt-6 cyber-card overflow-hidden ${isThreat ? 'threat-high' : ''}`}>
+    <div className={`mt-6 h-full flex-1 cyber-card overflow-hidden ${isThreat ? 'threat-high' : ''}`}>
       <div className={`scanner-bar ${isThreat ? 'threat' : ''}`}></div>
       <div className="flex items-center gap-3 mb-6">
         <span className={`w-3 h-3 ${isThreat ? 'bg-[#ff00ff]' : 'bg-[#00ffff]'} animate-pulse-fast`}></span>
@@ -147,10 +181,9 @@ export default function Home() {
   const analyzeText = async () => {
     if (!text) return;
     setLoading(true);
-    setResult(null);
+    setActiveReport(null);
     setLogs([]);
     
-    // Fire off log simulation without awaiting
     simulateLogs();
 
     try {
@@ -161,7 +194,8 @@ export default function Home() {
       });
       const data = await res.json();
       addLog(`ANALYSIS COMPLETE. VERDICT: ${data.verdict}`);
-      setResult(data);
+      setActiveReport(data);
+      setReportType("TXT");
     } catch (e) {
       console.error(e);
       addLog("ERROR: CONNECTION FAILED");
@@ -173,7 +207,7 @@ export default function Home() {
   const analyzeFile = async () => {
     if (!qrFile) return;
     setQrLoading(true);
-    setQrResult(null);
+    setActiveReport(null);
     setLogs([]);
 
     simulateLogs();
@@ -191,7 +225,8 @@ export default function Home() {
       });
       const data = await res.json();
       addLog(`DECODE COMPLETE. VERDICT: ${data.verdict}`);
-      setQrResult(data);
+      setActiveReport(data);
+      setReportType("FILE");
     } catch (e) {
       console.error(e);
       addLog("ERROR: DECODE FAILED");
@@ -201,11 +236,11 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen p-4 md:p-8">
+    <main className="min-h-screen p-4 md:p-8 flex flex-col h-screen overflow-hidden">
       <div className="vignette"></div>
       
       {/* Top Navigation / Header */}
-      <header className="max-w-7xl mx-auto mb-12 flex flex-col md:flex-row justify-between items-end border-b border-white/10 pb-6 relative">
+      <header className="max-w-7xl w-full mx-auto mb-8 flex flex-col md:flex-row justify-between items-end border-b border-white/10 pb-6 relative shrink-0">
         <div className="absolute bottom-0 left-0 w-1/3 h-px bg-gradient-to-r from-[var(--neon-cyan)] to-transparent"></div>
         <div>
           <h1 className="text-5xl md:text-6xl font-black tracking-widest uppercase glitch-text text-white mb-2" data-text="AEGIS-SWARM">
@@ -227,128 +262,128 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="max-w-7xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 overflow-hidden">
         
-        {/* LEFT COLUMN: TXT_INTERCEPTOR (Spans 5 cols) */}
-        <div className="lg:col-span-5 flex flex-col">
-          <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
-            <div className="flex items-center gap-3">
-              <div className="bg-[#00ffff] text-black font-black px-2 py-1 text-[10px] tracking-widest">MOD_01</div>
-              <h2 className="text-lg font-bold tracking-widest uppercase text-white">TXT_INTERCEPTOR</h2>
-            </div>
-            <div className="text-[10px] text-slate-500 font-mono tracking-widest">AWAITING_INPUT</div>
-          </div>
+        {/* LEFT COLUMN: INTERCEPTORS (Spans 4 cols) */}
+        <div className="lg:col-span-4 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar">
           
-          <div className="cyber-card flex-1 flex flex-col p-6">
-            <div className="relative flex-1 min-h-[200px]">
-              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[#00ffff]/50"></div>
-              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[#00ffff]/50"></div>
-              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[#00ffff]/50"></div>
-              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-[#00ffff]/50"></div>
-              
-              <textarea
-                className="w-full h-full min-h-[200px] bg-transparent border-none p-6 text-sm text-[#00ffff] placeholder-slate-600 focus:outline-none transition resize-none font-mono"
-                placeholder="> PASTE_SUSPICIOUS_PAYLOAD_HERE..."
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-              />
+          {/* TXT_INTERCEPTOR */}
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+              <div className="flex items-center gap-3">
+                <div className="bg-[#00ffff] text-black font-black px-2 py-1 text-[10px] tracking-widest">MOD_01</div>
+                <h2 className="text-sm font-bold tracking-widest uppercase text-white">TXT_INTERCEPTOR</h2>
+              </div>
             </div>
             
-            <button 
-              onClick={analyzeText}
-              disabled={loading || !text}
-              className="cyber-button mt-6 w-full py-4 text-sm"
-            >
-              {loading ? "PROCESSING..." : "EXECUTE_SCAN //"}
-            </button>
-
-            {loading ? <LoadingSkeleton /> : result ? (
-              <div className="animate-[fadeIn_0.3s_ease-in-out]">
-                <VerdictPanel
-                  verdict={result.verdict}
-                  confidence={result.confidence}
-                  modelUsed={result.model_used}
-                  memoryMatches={result.memory_matches}
-                  titleHigh="BREACH_DETECTED"
-                  titleLow="PAYLOAD_SECURE"
+            <div className="cyber-card p-4">
+              <div className="relative h-[120px]">
+                <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[#00ffff]/50"></div>
+                <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[#00ffff]/50"></div>
+                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[#00ffff]/50"></div>
+                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-[#00ffff]/50"></div>
+                
+                <textarea
+                  className="w-full h-full bg-transparent border-none p-4 text-xs text-[#00ffff] placeholder-slate-600 focus:outline-none transition resize-none font-mono"
+                  placeholder="> PASTE_SUSPICIOUS_PAYLOAD_HERE..."
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
                 />
               </div>
-            ) : null}
+              
+              <button 
+                onClick={analyzeText}
+                disabled={loading || !text || qrLoading}
+                className="cyber-button mt-4 w-full py-3 text-xs"
+              >
+                {loading ? "PROCESSING..." : "EXECUTE_SCAN //"}
+              </button>
+            </div>
+          </div>
+
+          {/* FILE_DECODER */}
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+              <div className="flex items-center gap-3">
+                <div className="bg-[#ff00ff] text-black font-black px-2 py-1 text-[10px] tracking-widest">MOD_02</div>
+                <h2 className="text-sm font-bold tracking-widest uppercase text-white">FILE_DECODER</h2>
+              </div>
+            </div>
+            
+            <div className="cyber-card p-4">
+              <div className="cyber-dropzone h-[120px] w-full flex items-center justify-center p-4 cursor-pointer">
+                <label className="cursor-pointer w-full text-center h-full flex flex-col items-center justify-center">
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, .eml, .txt"
+                    onChange={(e) => setQrFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                  {qrFile ? (
+                    <div className="text-[#ff00ff]">
+                      <p className="text-sm font-bold truncate max-w-[200px] mb-1">{qrFile.name}</p>
+                      <p className="text-[10px] text-slate-500 tracking-widest uppercase">CLICK_TO_OVERRIDE</p>
+                    </div>
+                  ) : (
+                    <div className="text-[#00ffff]">
+                      <p className="text-xs font-bold tracking-widest uppercase mb-1">DROP_TARGET</p>
+                      <p className="text-[10px] text-slate-500 uppercase">IMG / EML / TXT</p>
+                    </div>
+                  )}
+                </label>
+              </div>
+              
+              <button 
+                onClick={analyzeFile}
+                disabled={qrLoading || !qrFile || loading}
+                className="cyber-button threat-btn mt-4 w-full py-3 text-xs"
+              >
+                {qrLoading ? "DECODING..." : "EXECUTE_SCAN //"}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* MIDDLE COLUMN: FILE_DECODER (Spans 4 cols) */}
-        <div className="lg:col-span-4 flex flex-col">
-          <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+        {/* MIDDLE COLUMN: ANALYSIS REPORT (Spans 5 cols) */}
+        <div className="lg:col-span-5 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2 shrink-0">
             <div className="flex items-center gap-3">
-              <div className="bg-[#ff00ff] text-black font-black px-2 py-1 text-[10px] tracking-widest">MOD_02</div>
-              <h2 className="text-lg font-bold tracking-widest uppercase text-white">FILE_DECODER</h2>
+              <div className="bg-[#00ffff] text-black font-black px-2 py-1 text-[10px] tracking-widest">MOD_03</div>
+              <h2 className="text-lg font-bold tracking-widest uppercase text-white">ANALYSIS_REPORT</h2>
             </div>
           </div>
           
-          <div className="cyber-card flex-1 flex flex-col p-6">
-            <div className="cyber-dropzone flex-1 min-h-[200px] w-full flex items-center justify-center p-6 cursor-pointer">
-              <label className="cursor-pointer w-full text-center h-full flex flex-col items-center justify-center">
-                <input
-                  type="file"
-                  accept="image/png, image/jpeg, .eml, .txt"
-                  onChange={(e) => setQrFile(e.target.files?.[0] || null)}
-                  className="hidden"
-                />
-                {qrFile ? (
-                  <div className="text-[#ff00ff]">
-                    <div className="w-12 h-12 border-2 border-[#ff00ff] flex items-center justify-center mx-auto mb-4 rounded-sm bg-[#ff00ff]/10">
-                      <span className="font-bold">FILE</span>
-                    </div>
-                    <p className="text-sm font-bold truncate max-w-[200px]">{qrFile.name}</p>
-                    <p className="text-[10px] text-slate-500 mt-2 tracking-widest uppercase">CLICK_TO_OVERRIDE</p>
-                  </div>
-                ) : (
-                  <div className="text-[#00ffff]">
-                    <div className="w-12 h-12 border-2 border-[#00ffff]/30 flex items-center justify-center mx-auto mb-4 rounded-sm border-dashed">
-                      <p className="text-2xl font-black">+</p>
-                    </div>
-                    <p className="text-xs font-bold tracking-widest uppercase">DROP_TARGET</p>
-                    <p className="text-[10px] text-slate-500 mt-1 uppercase">IMG / EML / TXT</p>
-                  </div>
-                )}
-              </label>
-            </div>
-            
-            <button 
-              onClick={analyzeFile}
-              disabled={qrLoading || !qrFile}
-              className="cyber-button threat-btn mt-6 w-full py-4 text-sm"
-            >
-              {qrLoading ? "DECODING..." : "EXECUTE_SCAN //"}
-            </button>
-
-            {qrLoading ? <LoadingSkeleton isThreat={true} /> : qrResult ? (
-              <div className="animate-[fadeIn_0.3s_ease-in-out]">
-                <VerdictPanel
-                  verdict={qrResult.verdict}
-                  confidence={qrResult.confidence}
-                  modelUsed={qrResult.model_used}
-                  memoryMatches={qrResult.memory_matches}
-                  titleHigh="MALWARE_DETECTED"
-                  titleLow="FILE_SECURE"
-                />
-                
-                {qrResult.details?.decoded_url && (
-                  <div className="mt-6 border border-[#00ffff]/30 bg-black/50 p-4 text-xs font-mono relative">
-                    <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-[#00ffff] to-transparent"></div>
-                    <div className="text-[#00ffff] mb-2 font-bold tracking-widest">&gt; EXTRACTED_PAYLOAD:</div>
-                    <div className="text-white break-all">{qrResult.details.decoded_url}</div>
-                  </div>
-                )}
-              </div>
-            ) : null}
+          <div className="cyber-card flex-1 flex flex-col p-6 min-h-0 relative overflow-hidden">
+             {(loading || qrLoading) ? (
+               <LoadingSkeleton isThreat={qrLoading} />
+             ) : activeReport ? (
+               <div className="animate-[fadeIn_0.3s_ease-in-out] h-full flex flex-col overflow-hidden">
+                 <VerdictPanel
+                   verdict={activeReport.verdict}
+                   confidence={activeReport.confidence}
+                   modelUsed={activeReport.model_used}
+                   memoryMatches={activeReport.memory_matches}
+                   titleHigh={reportType === "FILE" ? "MALWARE_DETECTED" : "BREACH_DETECTED"}
+                   titleLow={reportType === "FILE" ? "FILE_SECURE" : "PAYLOAD_SECURE"}
+                   details={activeReport.details}
+                   similarThreats={activeReport.similar_threats}
+                 />
+               </div>
+             ) : (
+               <div className="flex-1 flex flex-col items-center justify-center text-slate-500 font-mono text-xs border border-dashed border-slate-700 p-8 text-center bg-black/30 opacity-70">
+                 <div className="w-12 h-12 border-2 border-slate-700 flex items-center justify-center mb-4 rounded-full">
+                    <span className="text-slate-500">i</span>
+                 </div>
+                 NO_ACTIVE_REPORT<br/><br/>
+                 AWAITING_SCAN_EXECUTION FROM MOD_01 OR MOD_02
+               </div>
+             )}
           </div>
         </div>
 
         {/* RIGHT COLUMN: DATA STREAM (Spans 3 cols) */}
-        <div className="lg:col-span-3 flex flex-col">
-          <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+        <div className="lg:col-span-3 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2 shrink-0">
             <div className="flex items-center gap-3">
               <div className="bg-[#fcee0a] text-black font-black px-2 py-1 text-[10px] tracking-widest">SYS_LOG</div>
               <h2 className="text-lg font-bold tracking-widest uppercase text-white">DATA_STREAM</h2>
@@ -356,16 +391,16 @@ export default function Home() {
           </div>
           
           <div className="cyber-card flex-1 flex flex-col p-0 overflow-hidden bg-black/90 border-[#fcee0a]/30">
-            <div className="p-4 bg-[#fcee0a]/5 border-b border-[#fcee0a]/20 flex justify-between items-center">
+            <div className="p-4 bg-[#fcee0a]/5 border-b border-[#fcee0a]/20 flex justify-between items-center shrink-0">
               <span className="text-[#fcee0a] text-[10px] font-black tracking-widest uppercase">LIVE_TRACE</span>
               <span className="w-2 h-2 rounded-full bg-[#fcee0a] animate-pulse"></span>
             </div>
-            <div className="p-4 flex-1 data-stream font-mono text-slate-300 min-h-[400px]">
+            <div className="p-4 flex-1 data-stream font-mono text-slate-300 overflow-y-auto custom-scrollbar">
               {logs.length === 0 ? (
-                <div className="opacity-50 italic">Waiting for telemetry...</div>
+                <div className="opacity-50 italic text-xs">Waiting for telemetry...</div>
               ) : (
                 logs.map((log, i) => (
-                  <div key={i} className="log-entry mb-2">
+                  <div key={i} className="log-entry mb-2 text-xs">
                     {log}
                   </div>
                 ))
@@ -376,7 +411,7 @@ export default function Home() {
 
       </div>
 
-      <footer className="max-w-7xl mx-auto mt-16 pt-6 flex justify-between text-slate-600 text-[10px] tracking-widest border-t border-slate-800 uppercase font-bold">
+      <footer className="max-w-7xl mx-auto mt-8 pt-4 flex justify-between text-slate-600 text-[10px] tracking-widest border-t border-slate-800 uppercase font-bold shrink-0">
         <span>AUTHOR: ABDULLAH // FA23-BCE-049</span>
         <span className="flex items-center gap-2">
           <span>SECURE_NODE</span>
