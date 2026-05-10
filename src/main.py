@@ -1,10 +1,9 @@
 """
-AEGIS-SWARM FastAPI Backend (CORRECTED)
+AEGIS-SWARM FastAPI Backend (RENDER DEPLOYMENT)
 """
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
 import joblib
 import cv2
 import numpy as np
@@ -13,11 +12,7 @@ from scipy.sparse import hstack, csr_matrix
 import pandas as pd
 import uvicorn
 import os
-import asyncio
-import imaplib
-import smtplib
 import email
-from email.message import EmailMessage
 from sentence_transformers import SentenceTransformer
 from supabase import create_client
 
@@ -30,18 +25,13 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://aegis-swarm-eta.vercel.app",
+        "https://aegis-swarm-snowy.vercel.app",
         "https://*.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Email settings
-IMAP_SERVER = "imap.gmail.com"
-SMTP_SERVER = "smtp.gmail.com"
-EMAIL_ACCOUNT = os.getenv("EMAIL_ACCOUNT", "aegisswarm@gmail.com")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "your-app-password")
 
 # ==========================================
 # SUPABASE CONNECTION
@@ -116,7 +106,6 @@ def extract_url_features(urls):
 # MEMORY CORE FUNCTIONS
 # ==========================================
 def store_threat(content, embedding, threat_type, confidence, agent_source):
-    """Store threat in Supabase pgvector"""
     try:
         supabase.table("threats").insert({
             "content": content,
@@ -129,7 +118,6 @@ def store_threat(content, embedding, threat_type, confidence, agent_source):
         print(f"Memory store error: {e}")
 
 def search_similar_threats(content, threshold=0.60, k=3):
-    """Search for similar threats in memory"""
     try:
         embedding = embedder.encode(content, normalize_embeddings=True).tolist()
         result = supabase.rpc("match_threats", {
@@ -160,8 +148,6 @@ async def health():
 async def analyze_text(request: TextRequest):
     try:
         text = request.text
-        
-        # 1. NLP Classification
         tfidf_vec = nlp_tfidf.transform([text])
         handcrafted = extract_text_features([text])
         combined = hstack([tfidf_vec, csr_matrix(handcrafted.values)])
@@ -172,10 +158,7 @@ async def analyze_text(request: TextRequest):
         verdict = "HIGH" if pred == 1 else "LOW"
         confidence = phishing_prob if pred == 1 else (100 - phishing_prob)
         
-        # 2. Memory Search
         memory_matches = search_similar_threats(text, threshold=0.55, k=3)
-        
-        # 3. Store in Memory
         embedding = embedder.encode(text, normalize_embeddings=True).tolist()
         store_threat(text, embedding, verdict, confidence / 100, "ShieldAI_NLP")
         
@@ -200,7 +183,6 @@ async def analyze_qr(file: UploadFile = File(...)):
         if img is None:
             raise HTTPException(status_code=400, detail="Invalid image")
         
-        # Use OpenCV QR detector (no pyzbar needed)
         detector = cv2.QRCodeDetector()
         data, bbox, _ = detector.detectAndDecode(img)
         
@@ -208,8 +190,6 @@ async def analyze_qr(file: UploadFile = File(...)):
             return {"verdict": "UNKNOWN", "confidence": 0.0, "model_used": "QR Decoder", "details": {"message": "No URL found in QR"}}
         
         url = data
-        
-        # URL Classification
         tfidf_vec = url_tfidf.transform([url])
         handcrafted = extract_url_features([url])
         combined = hstack([tfidf_vec, csr_matrix(handcrafted.values)])
@@ -221,7 +201,6 @@ async def analyze_qr(file: UploadFile = File(...)):
         verdict = "HIGH" if pred == 1 else "LOW"
         confidence = malicious_prob if pred == 1 else (100 - malicious_prob)
         
-        # Memory
         memory_matches = search_similar_threats(url, threshold=0.55, k=3)
         embedding = embedder.encode(url, normalize_embeddings=True).tolist()
         store_threat(url, embedding, verdict, confidence / 100, "QR_URL_Classifier")
@@ -254,7 +233,6 @@ async def analyze_file(file: UploadFile = File(...)):
         if not text_content.strip():
             raise HTTPException(status_code=400, detail="No readable text found in file")
             
-        # Re-use the NLP classification pipeline
         tfidf_vec = nlp_tfidf.transform([text_content])
         handcrafted = extract_text_features([text_content])
         combined = hstack([tfidf_vec, csr_matrix(handcrafted.values)])
@@ -281,78 +259,11 @@ async def analyze_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
-# BACKGROUND EMAIL WORKER
+# RENDER STARTUP (NO EMAIL DAEMON)
 # ==========================================
-def send_email_reply(to_addr, verdict, confidence, details):
-    try:
-        msg = EmailMessage()
-        msg.set_content(f"AEGIS-SWARM Threat Analysis Report\n\nVerdict: {verdict}\nConfidence: {confidence}%\nDetails: {details}\n\nStay secure,\nAEGIS-SWARM")
-        msg['Subject'] = f"[AEGIS-SWARM] Analysis Result: {verdict}"
-        msg['From'] = EMAIL_ACCOUNT
-        msg['To'] = to_addr
-        
-        server = smtplib.SMTP_SSL(SMTP_SERVER, 465)
-        server.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-    except Exception as e:
-        print(f"Failed to send email reply: {e}")
-
-async def poll_emails():
-    while True:
-        try:
-            if EMAIL_PASSWORD == "your-app-password":
-                await asyncio.sleep(60)
-                continue
-                
-            mail = imaplib.IMAP4_SSL(IMAP_SERVER)
-            mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
-            mail.select('inbox')
-            _, data = mail.search(None, 'UNSEEN')
-            
-            for num in data[0].split():
-                _, msg_data = mail.fetch(num, '(RFC822)')
-                for response_part in msg_data:
-                    if isinstance(response_part, tuple):
-                        msg = email.message_from_bytes(response_part[1])
-                        sender = msg['From']
-                        
-                        text_content = ""
-                        if msg.is_multipart():
-                            for part in msg.walk():
-                                if part.get_content_type() == "text/plain":
-                                    text_content += part.get_payload(decode=True).decode(errors='ignore')
-                        else:
-                            text_content = msg.get_payload(decode=True).decode(errors='ignore')
-                            
-                        if text_content.strip():
-                            # Analyze
-                            tfidf_vec = nlp_tfidf.transform([text_content])
-                            handcrafted = extract_text_features([text_content])
-                            combined = hstack([tfidf_vec, csr_matrix(handcrafted.values)])
-                            pred = nlp_model.predict(combined)[0]
-                            proba = nlp_model.predict_proba(combined)[0]
-                            
-                            verdict = "HIGH RISK" if pred == 1 else "SAFE"
-                            conf = proba[1]*100 if pred == 1 else (100 - proba[1]*100)
-                            
-                            send_email_reply(sender, verdict, round(conf, 2), "Analyzed via IMAP Poller")
-            mail.close()
-            mail.logout()
-        except Exception as e:
-            print(f"IMAP Error: {e}")
-            
-        await asyncio.sleep(30)
-
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(poll_emails())
-
 if __name__ == "__main__":
     print("\n" + "="*50)
-    print("  AEGIS-SWARM API v2.0")
-    print("  Local: http://localhost:8000")
-    print("  Docs:  http://localhost:8000/docs")
+    print("  AEGIS-SWARM API v2.5")
+    print("  Render: https://aegis-swarm-api.onrender.com")
     print("="*50 + "\n")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=10000, workers=1)
