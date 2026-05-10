@@ -39,7 +39,7 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "your-app-password")
 # SUPABASE CONNECTION
 # ==========================================
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://fpvmqjsnqakhiqbscjle.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_waM7OZYSVfc1q_lzMZLiuA_Ou_q_GtX")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwdm1xanNucWFraGlxYnNjamxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTgzNTAsImV4cCI6MjA5MzY3NDM1MH0.q11ue7nFAraaRtVcABYKKXemUIraEMG8Ets2q-89yA0")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 print("✅ Supabase connected")
