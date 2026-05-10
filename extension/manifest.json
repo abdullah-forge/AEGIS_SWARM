@@ -12,6 +12,7 @@
   },
   "host_permissions": [
     "http://localhost:8000/*",
-    "https://*.onrender.com/*"
+    "https://*.onrender.com/*",
+    "https://wall06-aegis-swarm-api.hf.space/*"
   ]
 }

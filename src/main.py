@@ -26,7 +26,15 @@ from supabase import create_client
 # ==========================================
 app = FastAPI(title="AEGIS-SWARM API", version="2.5.0")
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://aegis-swarm-eta.vercel.app",
+        "https://*.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Email settings
@@ -142,7 +150,7 @@ class TextRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"name": "AEGIS-SWARM", "status": "running", "version": "2.0.0"}
+    return {"status": "ok", "service": "AEGIS-SWARM"}
 
 @app.get("/health")
 async def health():
@@ -336,23 +344,10 @@ async def poll_emails():
             
         await asyncio.sleep(30)
 
-async def keep_alive_ping():
-    """Internal ping to prevent Hugging Face Space from sleeping."""
-    import urllib.request
-    while True:
-        try:
-            await asyncio.sleep(5 * 60) # Ping every 5 minutes
-            space_url = os.getenv("SPACE_URL", "http://localhost:8000/health")
-            req = urllib.request.Request(space_url, headers={'User-Agent': 'KeepAlivePing/1.0'})
-            urllib.request.urlopen(req)
-            print(f"Keep-alive ping sent to {space_url}")
-        except Exception as e:
-            print(f"Keep-alive ping failed: {e}")
 
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(poll_emails())
-    asyncio.create_task(keep_alive_ping())
 
 if __name__ == "__main__":
     print("\n" + "="*50)

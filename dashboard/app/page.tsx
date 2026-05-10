@@ -11,7 +11,7 @@ type AnalysisResult = {
   details: any;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = "https://wall06-aegis-swarm-api.hf.space";
 
 export default function Home() {
   const [text, setText] = useState("");
@@ -141,6 +141,7 @@ export default function Home() {
               </div>
              </div>
           )}
+          
         </div>
       );
     }
@@ -216,8 +217,15 @@ export default function Home() {
       const formData = new FormData();
       formData.append("file", qrFile);
       
-      const isDoc = qrFile.name.endsWith('.eml') || qrFile.name.endsWith('.txt');
-      const endpoint = isDoc ? "/analyze/file" : "/analyze/qr";
+      const isDoc = qrFile.name.toLowerCase().endsWith('.eml') || qrFile.name.toLowerCase().endsWith('.txt');
+      const isImage = qrFile.type.startsWith('image/');
+      
+      let endpoint = "/analyze/qr";
+      if (isDoc) {
+        endpoint = "/analyze/file";
+      } else if (!isImage) {
+        throw new Error("Unsupported file type");
+      }
       
       const res = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
