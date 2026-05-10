@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type AnalysisResult = {
   verdict: string;
@@ -11,6 +11,8 @@ type AnalysisResult = {
   details: any;
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function Home() {
   const [text, setText] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -18,6 +20,12 @@ export default function Home() {
   const [qrFile, setQrFile] = useState<File | null>(null);
   const [qrResult, setQrResult] = useState<AnalysisResult | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+
+  // Simulate data streams
+  const addLog = (msg: string) => {
+    setLogs((prev) => [...prev.slice(-8), `[${new Date().toISOString().split('T')[1].slice(0,-1)}] ${msg}`]);
+  };
 
   const normalizeVerdict = (v: string | undefined | null) =>
     (v || "").toString().trim().toUpperCase();
@@ -27,56 +35,28 @@ export default function Home() {
     return Math.max(0, Math.min(100, n));
   };
 
-  const ConfidenceBar = ({ value }: { value: number | undefined }) => {
+  const ConfidenceBar = ({ value, isThreat }: { value: number | undefined, isThreat: boolean }) => {
     const pct = confidencePercent(value);
-    const hue = pct >= 70 ? 0 : pct >= 35 ? 200 : 145; // red/cyan/green-ish
+    const color = isThreat ? "var(--neon-pink)" : "var(--neon-cyan)";
     return (
-      <div className="mt-3">
-        <div className="flex items-center justify-between text-[11px] text-slate-500">
-          <span>CONFIDENCE</span>
-          <span className="font-mono text-slate-300">{pct.toFixed(1)}%</span>
+      <div className="mt-6">
+        <div className="flex items-center justify-between text-xs text-slate-400 font-black tracking-widest uppercase mb-2">
+          <span>SYS_CONFIDENCE</span>
+          <span style={{ color, textShadow: `0 0 10px ${color}` }}>{pct.toFixed(1)}%</span>
         </div>
-        <div className="mt-2 h-2 w-full rounded-full bg-black/40 border border-slate-800 overflow-hidden">
+        <div className="h-4 w-full bg-[#0a0a0a] border border-slate-700 relative overflow-hidden clip-path-slant">
+          {/* Cyberpunk segmented bar effect */}
+          <div className="absolute inset-0 flex">
+            {[...Array(25)].map((_, i) => (
+              <div key={i} className="flex-1 border-r border-black/80 z-10" />
+            ))}
+          </div>
           <div
-            className="h-full rounded-full"
-            style={{
-              width: `${pct}%`,
-              background: `linear-gradient(90deg, hsla(${hue}, 90%, 60%, 0.65), hsla(${hue + 30}, 90%, 60%, 0.9))`,
-            }}
+            className="h-full relative z-0 transition-all duration-[1500ms] ease-out"
+            style={{ width: `${pct}%`, backgroundColor: color, boxShadow: `0 0 15px ${color}` }}
           />
         </div>
       </div>
-    );
-  };
-
-  const VerdictBadge = ({
-    verdict,
-    labelHigh,
-    labelLow,
-  }: {
-    verdict: string | undefined;
-    labelHigh: string;
-    labelLow: string;
-  }) => {
-    const v = normalizeVerdict(verdict);
-    if (v === "HIGH") {
-      return (
-        <span className="bg-red-500/20 text-red-300 text-xs px-3 py-1 rounded-full border border-red-500/50">
-          {labelHigh}
-        </span>
-      );
-    }
-    if (v === "LOW") {
-      return (
-        <span className="bg-emerald-500/20 text-emerald-300 text-xs px-3 py-1 rounded-full border border-emerald-500/50">
-          {labelLow}
-        </span>
-      );
-    }
-    return (
-      <span className="bg-yellow-500/20 text-yellow-300 text-xs px-3 py-1 rounded-full border border-yellow-500/50">
-        UNKNOWN
-      </span>
     );
   };
 
@@ -86,341 +66,322 @@ export default function Home() {
     modelUsed,
     titleHigh,
     titleLow,
-    glow,
+    memoryMatches
   }: {
     verdict: string | undefined;
     confidence: number | undefined;
     modelUsed: string | undefined;
     titleHigh: string;
     titleLow: string;
-    glow: "glow-red" | "glow-cyan";
+    memoryMatches?: number;
   }) => {
     const v = normalizeVerdict(verdict);
-    if (v === "HIGH") {
+    const isThreat = v === "HIGH" || v === "HIGH RISK";
+    
+    if (v === "HIGH" || v === "LOW" || v === "HIGH RISK" || v === "SAFE") {
       return (
-        <div className={`bg-red-500/10 border border-red-500/50 rounded-xl p-4 ${glow}`}>
-          <div className="flex justify-between items-center">
-            <h3 className="text-red-400 font-bold tracking-wider text-lg">
-              {titleHigh}
+        <div className={`cyber-card ${isThreat ? 'threat-high' : ''} mt-6`}>
+          <div className="flex justify-between items-start border-b border-white/10 pb-4 mb-4 relative">
+            <div className="absolute -left-2 top-0 bottom-0 w-1 bg-current" style={{ color: isThreat ? 'var(--neon-pink)' : 'var(--neon-cyan)' }}></div>
+            <h3 className={`font-black tracking-widest text-2xl pl-2 ${isThreat ? 'text-[#ff00ff] glitch-text' : 'text-[#00ffff]'}`} data-text={isThreat ? titleHigh : titleLow}>
+              {isThreat ? titleHigh : titleLow}
             </h3>
-            <VerdictBadge
-              verdict={verdict}
-              labelHigh="HIGH RISK"
-              labelLow="LOW RISK"
-            />
-          </div>
-          <ConfidenceBar value={confidence} />
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-slate-500 text-xs">ENGINE USED</p>
-              <p className="text-slate-300 text-sm mt-1">
-                {modelUsed || "—"}
-              </p>
+            <div className={`px-3 py-1 text-[10px] font-black tracking-widest border ${isThreat ? 'border-[#ff00ff] text-[#ff00ff] bg-[#ff00ff]/10' : 'border-[#00ffff] text-[#00ffff] bg-[#00ffff]/10'}`}>
+              [ {isThreat ? 'CRITICAL_ALERT' : 'STATUS_SECURE'} ]
             </div>
           </div>
-        </div>
-      );
-    }
-
-    if (v === "LOW") {
-      return (
-        <div className={`bg-emerald-500/10 border border-emerald-500/50 rounded-xl p-4 ${glow}`}>
-          <div className="flex justify-between items-center">
-            <h3 className="text-emerald-400 font-bold tracking-wider text-lg">
-              {titleLow}
-            </h3>
-            <VerdictBadge
-              verdict={verdict}
-              labelHigh="HIGH RISK"
-              labelLow="LOW RISK"
-            />
-          </div>
-          <ConfidenceBar value={confidence} />
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+          
+          <div className="grid grid-cols-2 gap-4 text-xs font-mono uppercase tracking-widest text-slate-400 mb-4">
             <div>
-              <p className="text-slate-500 text-xs">ENGINE USED</p>
-              <p className="text-slate-300 text-sm mt-1">
-                {modelUsed || "—"}
-              </p>
+              <div className="mb-1 opacity-50">ANALYSIS_ENGINE</div>
+              <div className="text-white font-bold">{modelUsed || "UNKNOWN"}</div>
             </div>
+            {memoryMatches !== undefined && (
+              <div>
+                <div className="mb-1 opacity-50">DB_MATCHES</div>
+                <div className={memoryMatches > 0 ? "text-[#fcee0a] font-bold" : "text-white font-bold"}>
+                  {memoryMatches} FOUND
+                </div>
+              </div>
+            )}
           </div>
+          
+          <ConfidenceBar value={confidence} isThreat={isThreat} />
         </div>
       );
     }
 
     return (
-      <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-xl p-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-yellow-400 font-bold tracking-wider">
-            ⚠ PARSE/CLASSIFY ERROR
-          </h3>
-          <VerdictBadge
-            verdict={verdict}
-            labelHigh="HIGH RISK"
-            labelLow="LOW RISK"
-          />
-        </div>
-        <p className="text-yellow-300/70 text-sm mt-2">
-          No actionable result yet.
-        </p>
+      <div className="cyber-card mt-6 border-red-500">
+        <h3 className="text-[#ff003c] font-bold tracking-widest glitch-text" data-text="⚠ ERR: PARSE_FAILURE">⚠ ERR: PARSE_FAILURE</h3>
+        <p className="text-slate-400 text-sm mt-2">Payload corrupted or unreadable.</p>
       </div>
     );
   };
 
-  const LoadingSkeleton = ({ tone }: { tone: "purple" | "orange" }) => (
-    <div className="mt-6 space-y-4 animate-[fadeIn_0.3s_ease-in-out]" aria-hidden="true">
-      <div className="bg-black/60 border border-slate-800 rounded-xl p-4">
-        <div className="h-4 w-2/3 rounded bg-slate-700 animate-pulse"></div>
-        <div className="mt-3 h-10 w-full rounded bg-slate-800 animate-pulse"></div>
-        <div className="mt-3 h-24 w-full rounded bg-slate-800 animate-pulse"></div>
+  const LoadingSkeleton = ({ isThreat = false }) => (
+    <div className={`mt-6 cyber-card overflow-hidden ${isThreat ? 'threat-high' : ''}`}>
+      <div className={`scanner-bar ${isThreat ? 'threat' : ''}`}></div>
+      <div className="flex items-center gap-3 mb-6">
+        <span className={`w-3 h-3 ${isThreat ? 'bg-[#ff00ff]' : 'bg-[#00ffff]'} animate-pulse-fast`}></span>
+        <span className={`text-sm font-black tracking-widest ${isThreat ? 'text-[#ff00ff]' : 'text-[#00ffff]'}`}>DECRYPTING_PAYLOAD...</span>
+      </div>
+      <div className="space-y-3">
+        <div className="h-2 w-full bg-slate-800/50"></div>
+        <div className="h-2 w-5/6 bg-slate-800/50"></div>
+        <div className="h-2 w-4/6 bg-slate-800/50"></div>
       </div>
     </div>
   );
 
-  const EmptyHint = ({ text }: { text: string }) => (
-    <div className="mt-6 bg-black/40 border border-slate-800 rounded-xl p-4 text-slate-500">
-      {text}
-    </div>
-  );
+  const simulateLogs = async () => {
+    addLog("INITIATING HANDSHAKE...");
+    await new Promise(r => setTimeout(r, 400));
+    addLog("EXTRACTING FEATURES...");
+    await new Promise(r => setTimeout(r, 400));
+    addLog("QUERYING ML INFERENCE ENGINE...");
+    await new Promise(r => setTimeout(r, 400));
+    addLog("SEARCHING PGVECTOR MEMORY CORE...");
+  };
 
   const analyzeText = async () => {
     if (!text) return;
     setLoading(true);
     setResult(null);
+    setLogs([]);
+    
+    // Fire off log simulation without awaiting
+    simulateLogs();
+
     try {
-      const res = await fetch("http://localhost:8000/analyze/text", {
+      const res = await fetch(`${API_URL}/analyze/text`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
       const data = await res.json();
+      addLog(`ANALYSIS COMPLETE. VERDICT: ${data.verdict}`);
       setResult(data);
     } catch (e) {
       console.error(e);
+      addLog("ERROR: CONNECTION FAILED");
     } finally {
       setLoading(false);
     }
   };
 
-  const analyzeQR = async () => {
+  const analyzeFile = async () => {
     if (!qrFile) return;
     setQrLoading(true);
     setQrResult(null);
+    setLogs([]);
+
+    simulateLogs();
+
     try {
       const formData = new FormData();
       formData.append("file", qrFile);
-      const res = await fetch("http://localhost:8000/analyze/qr", {
+      
+      const isDoc = qrFile.name.endsWith('.eml') || qrFile.name.endsWith('.txt');
+      const endpoint = isDoc ? "/analyze/file" : "/analyze/qr";
+      
+      const res = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
+      addLog(`DECODE COMPLETE. VERDICT: ${data.verdict}`);
       setQrResult(data);
     } catch (e) {
       console.error(e);
+      addLog("ERROR: DECODE FAILED");
     } finally {
       setQrLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen p-4 md:p-8 font-mono">
-      {/* Header */}
-      <header className="max-w-7xl mx-auto mb-12 flex flex-col md:flex-row justify-between items-center border-b border-purple-500/20 pb-6">
+    <main className="min-h-screen p-4 md:p-8">
+      <div className="vignette"></div>
+      
+      {/* Top Navigation / Header */}
+      <header className="max-w-7xl mx-auto mb-12 flex flex-col md:flex-row justify-between items-end border-b border-white/10 pb-6 relative">
+        <div className="absolute bottom-0 left-0 w-1/3 h-px bg-gradient-to-r from-[var(--neon-cyan)] to-transparent"></div>
         <div>
-          <h1 className="text-4xl md:text-5xl font-black tracking-wider text-white flex items-center gap-3">
-            <span className="text-purple-500">AEGIS</span>-<span className="text-cyan-400">SWARM</span>
+          <h1 className="text-5xl md:text-6xl font-black tracking-widest uppercase glitch-text text-white mb-2" data-text="AEGIS-SWARM">
+            AEGIS-SWARM
           </h1>
-          <p className="text-slate-500 tracking-widest text-sm mt-1">INTELLIGENT MULTI-MODAL THREAT TRIAGE</p>
+          <div className="flex items-center gap-4">
+            <span className="bg-[#00ffff] text-black text-[10px] font-black px-2 py-0.5 tracking-widest uppercase">SYS_ONLINE</span>
+            <p className="text-[#00ffff] tracking-widest text-xs uppercase font-mono">
+              Threat Intelligence Terminal v3.0 // CYBER_CORE
+            </p>
+          </div>
         </div>
-        <div className="mt-4 md:mt-0 flex items-center gap-2 text-xs text-slate-500 border border-slate-800 px-4 py-2 rounded-full">
-          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-          SYSTEMS ONLINE
+        <div className="mt-6 md:mt-0 px-4 py-3 bg-[var(--dark-bg)] border border-[#00ffff]/30 text-[#00ffff] text-[10px] font-bold tracking-widest uppercase flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 bg-[#ff00ff] animate-pulse-fast"></span>
+            UPLINK: SECURE
+          </div>
+          <div className="opacity-50">NODE: {API_URL.replace("http://", "").replace("https://", "")}</div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* TEXT ANALYSIS MODULE */}
-        <div className="glass-card rounded-2xl p-6 flex flex-col">
-          <div className="flex items-center gap-3 mb-6 border-b border-slate-700/50 pb-4">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400 text-xl">📝</div>
-            <div>
-              <h2 className="text-lg font-bold text-purple-300 tracking-wide">TEXT PARSER</h2>
-              <p className="text-xs text-slate-500">SHIELD-AI NLP ENGINE</p>
+        {/* LEFT COLUMN: TXT_INTERCEPTOR (Spans 5 cols) */}
+        <div className="lg:col-span-5 flex flex-col">
+          <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+            <div className="flex items-center gap-3">
+              <div className="bg-[#00ffff] text-black font-black px-2 py-1 text-[10px] tracking-widest">MOD_01</div>
+              <h2 className="text-lg font-bold tracking-widest uppercase text-white">TXT_INTERCEPTOR</h2>
             </div>
+            <div className="text-[10px] text-slate-500 font-mono tracking-widest">AWAITING_INPUT</div>
           </div>
-
-          <label className="sr-only" htmlFor="textInput">
-            Text payload
-          </label>
-          <textarea
-            id="textInput"
-            className="flex-1 min-h-[140px] w-full bg-black/40 border border-slate-700/50 rounded-lg p-4 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500/50 transition font-mono resize-none"
-            placeholder={"> paste_sms_or_email_payload_here..."}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
           
-          <button 
-            onClick={analyzeText}
-            disabled={loading}
-            className="mt-4 w-full py-3 bg-purple-600/20 border border-purple-500/50 hover:bg-purple-600/40 text-purple-200 rounded-lg font-bold tracking-widest text-sm transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <span className="animate-pulse-glow">● SCANNING...</span>
-            ) : (
-              "▶ EXECUTE SCAN"
-            )}
-          </button>
+          <div className="cyber-card flex-1 flex flex-col p-6">
+            <div className="relative flex-1 min-h-[200px]">
+              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[#00ffff]/50"></div>
+              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[#00ffff]/50"></div>
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[#00ffff]/50"></div>
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-[#00ffff]/50"></div>
+              
+              <textarea
+                className="w-full h-full min-h-[200px] bg-transparent border-none p-6 text-sm text-[#00ffff] placeholder-slate-600 focus:outline-none transition resize-none font-mono"
+                placeholder="> PASTE_SUSPICIOUS_PAYLOAD_HERE..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+            </div>
+            
+            <button 
+              onClick={analyzeText}
+              disabled={loading || !text}
+              className="cyber-button mt-6 w-full py-4 text-sm"
+            >
+              {loading ? "PROCESSING..." : "EXECUTE_SCAN //"}
+            </button>
 
-          {/* Text Results UI */}
-          <div aria-live="polite">
-            {loading ? (
-              <LoadingSkeleton tone="purple" />
-            ) : result ? (
-              <div className="mt-6 space-y-4 animate-[fadeIn_0.3s_ease-in-out]">
+            {loading ? <LoadingSkeleton /> : result ? (
+              <div className="animate-[fadeIn_0.3s_ease-in-out]">
                 <VerdictPanel
                   verdict={result.verdict}
                   confidence={result.confidence}
                   modelUsed={result.model_used}
-                  titleHigh="⚠ THREAT DETECTED"
-                  titleLow="✓ CLEAR"
-                  glow="glow-red"
+                  memoryMatches={result.memory_matches}
+                  titleHigh="BREACH_DETECTED"
+                  titleLow="PAYLOAD_SECURE"
                 />
-                <div className="bg-black/60 border border-slate-800 rounded-lg p-4 font-mono text-xs">
-                  <div className="flex items-center gap-2 text-slate-500 mb-2 border-b border-slate-800 pb-2">
-                    <span className="w-2 h-2 bg-cyan-500 rounded-full"></span>
-                    MEMORY_CORE // PGVECTOR
-                  </div>
-                  <p className="text-slate-400 mb-2">
-                    {"<"} query_similar_vectors(threshold=0.55)
-                  </p>
-                  <p className="text-cyan-400">
-                    {"<"} Found: {result.memory_matches} historical matches.
-                  </p>
-                  {result.details && (
-                    <p className="text-slate-500 mt-2">
-                      {"<"} raw_prob: {result.details.phishing_probability}%
-                    </p>
-                  )}
-                </div>
               </div>
-            ) : (
-              <EmptyHint text="Awaiting scan… paste a payload and execute the scan." />
-            )}
+            ) : null}
           </div>
         </div>
 
-        {/* QR ANALYSIS MODULE */}
-        <div className="glass-card rounded-2xl p-6 flex flex-col">
-          <div className="flex items-center gap-3 mb-6 border-b border-slate-700/50 pb-4">
-            <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-400 text-xl">🖼️</div>
-            <div>
-              <h2 className="text-lg font-bold text-orange-300 tracking-wide">QR PARSER</h2>
-              <p className="text-xs text-slate-500">VISUAL AGENT - URL CLASSIFIER</p>
+        {/* MIDDLE COLUMN: FILE_DECODER (Spans 4 cols) */}
+        <div className="lg:col-span-4 flex flex-col">
+          <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+            <div className="flex items-center gap-3">
+              <div className="bg-[#ff00ff] text-black font-black px-2 py-1 text-[10px] tracking-widest">MOD_02</div>
+              <h2 className="text-lg font-bold tracking-widest uppercase text-white">FILE_DECODER</h2>
             </div>
           </div>
           
-          <div className="flex-1 min-h-[140px] w-full bg-black/40 border border-dashed border-slate-700/50 rounded-lg flex items-center justify-center p-6">
-            <label className="cursor-pointer w-full text-center">
-              <label className="sr-only" htmlFor="qrInput">
-                QR image
+          <div className="cyber-card flex-1 flex flex-col p-6">
+            <div className="cyber-dropzone flex-1 min-h-[200px] w-full flex items-center justify-center p-6 cursor-pointer">
+              <label className="cursor-pointer w-full text-center h-full flex flex-col items-center justify-center">
+                <input
+                  type="file"
+                  accept="image/png, image/jpeg, .eml, .txt"
+                  onChange={(e) => setQrFile(e.target.files?.[0] || null)}
+                  className="hidden"
+                />
+                {qrFile ? (
+                  <div className="text-[#ff00ff]">
+                    <div className="w-12 h-12 border-2 border-[#ff00ff] flex items-center justify-center mx-auto mb-4 rounded-sm bg-[#ff00ff]/10">
+                      <span className="font-bold">FILE</span>
+                    </div>
+                    <p className="text-sm font-bold truncate max-w-[200px]">{qrFile.name}</p>
+                    <p className="text-[10px] text-slate-500 mt-2 tracking-widest uppercase">CLICK_TO_OVERRIDE</p>
+                  </div>
+                ) : (
+                  <div className="text-[#00ffff]">
+                    <div className="w-12 h-12 border-2 border-[#00ffff]/30 flex items-center justify-center mx-auto mb-4 rounded-sm border-dashed">
+                      <p className="text-2xl font-black">+</p>
+                    </div>
+                    <p className="text-xs font-bold tracking-widest uppercase">DROP_TARGET</p>
+                    <p className="text-[10px] text-slate-500 mt-1 uppercase">IMG / EML / TXT</p>
+                  </div>
+                )}
               </label>
-              <input
-                id="qrInput"
-                type="file"
-                accept="image/png, image/jpeg"
-                onChange={(e) => setQrFile(e.target.files?.[0] || null)}
-                className="hidden"
-              />
-              {qrFile ? (
-                <div className="text-cyan-400">
-                  <p className="text-lg">📄 {qrFile.name}</p>
-                  <p className="text-xs text-slate-500 mt-1">Click to change</p>
-                </div>
-              ) : (
-                <div className="text-slate-600">
-                  <p className="text-3xl mb-2">▹</p>
-                  <p className="text-sm">DROP QR IMAGE HERE</p>
-                </div>
-              )}
-            </label>
-          </div>
-          
-          <button 
-            onClick={analyzeQR}
-            disabled={qrLoading || !qrFile}
-            className="mt-4 w-full py-3 bg-orange-600/20 border border-orange-500/50 hover:bg-orange-600/40 text-orange-200 rounded-lg font-bold tracking-widest text-sm transition flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {qrLoading ? (
-              <span className="animate-pulse-glow">● DECODING...</span>
-            ) : (
-              "▶ EXECUTE SCAN"
-            )}
-          </button>
+            </div>
+            
+            <button 
+              onClick={analyzeFile}
+              disabled={qrLoading || !qrFile}
+              className="cyber-button threat-btn mt-6 w-full py-4 text-sm"
+            >
+              {qrLoading ? "DECODING..." : "EXECUTE_SCAN //"}
+            </button>
 
-          {/* QR Results UI */}
-          <div aria-live="polite">
-            {qrLoading ? (
-              <LoadingSkeleton tone="orange" />
-            ) : qrResult ? (
-              <div className="mt-6 space-y-4 animate-[fadeIn_0.3s_ease-in-out]">
+            {qrLoading ? <LoadingSkeleton isThreat={true} /> : qrResult ? (
+              <div className="animate-[fadeIn_0.3s_ease-in-out]">
                 <VerdictPanel
                   verdict={qrResult.verdict}
                   confidence={qrResult.confidence}
                   modelUsed={qrResult.model_used}
-                  titleHigh="⚠ MALICIOUS QR"
-                  titleLow="✓ SAFE QR"
-                  glow="glow-red"
+                  memoryMatches={qrResult.memory_matches}
+                  titleHigh="MALWARE_DETECTED"
+                  titleLow="FILE_SECURE"
                 />
-                {normalizeVerdict(qrResult.verdict) === "LOW" && (
-                  <div className="hidden" />
-                )}
-
-                {/* extra parse error detail */}
-                {normalizeVerdict(qrResult.verdict) !== "HIGH" &&
-                  normalizeVerdict(qrResult.verdict) !== "LOW" && (
-                    <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-xl p-4">
-                      <h3 className="text-yellow-400 font-bold tracking-wider">
-                        ⚠ PARSE ERROR
-                      </h3>
-                      <p className="text-yellow-300/70 text-sm mt-1">
-                        {qrResult.details?.message || "No URL found"}
-                      </p>
-                    </div>
-                  )}
-
+                
                 {qrResult.details?.decoded_url && (
-                  <div className="bg-black/60 border border-slate-800 rounded-lg p-4 font-mono text-xs">
-                    <p className="text-slate-500 mb-1">DECODED PAYLOAD:</p>
-                    <p className="text-cyan-400 break-all">
-                      {qrResult.details.decoded_url}
-                    </p>
+                  <div className="mt-6 border border-[#00ffff]/30 bg-black/50 p-4 text-xs font-mono relative">
+                    <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-[#00ffff] to-transparent"></div>
+                    <div className="text-[#00ffff] mb-2 font-bold tracking-widest">> EXTRACTED_PAYLOAD:</div>
+                    <div className="text-white break-all">{qrResult.details.decoded_url}</div>
                   </div>
                 )}
-
-                <div className="bg-black/60 border border-slate-800 rounded-lg p-4 font-mono text-xs">
-                  <div className="flex items-center gap-2 text-slate-500 mb-2 border-b border-slate-800 pb-2">
-                    <span className="w-2 h-2 bg-cyan-500 rounded-full"></span>
-                    MEMORY_CORE // PGVECTOR
-                  </div>
-                  <p className="text-cyan-400">
-                    {"<"} Found: {qrResult.memory_matches} historical matches.
-                  </p>
-                </div>
               </div>
-            ) : (
-              <EmptyHint text="Awaiting scan… upload a QR image and execute the scan." />
-            )}
+            ) : null}
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: DATA STREAM (Spans 3 cols) */}
+        <div className="lg:col-span-3 flex flex-col">
+          <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+            <div className="flex items-center gap-3">
+              <div className="bg-[#fcee0a] text-black font-black px-2 py-1 text-[10px] tracking-widest">SYS_LOG</div>
+              <h2 className="text-lg font-bold tracking-widest uppercase text-white">DATA_STREAM</h2>
+            </div>
+          </div>
+          
+          <div className="cyber-card flex-1 flex flex-col p-0 overflow-hidden bg-black/90 border-[#fcee0a]/30">
+            <div className="p-4 bg-[#fcee0a]/5 border-b border-[#fcee0a]/20 flex justify-between items-center">
+              <span className="text-[#fcee0a] text-[10px] font-black tracking-widest uppercase">LIVE_TRACE</span>
+              <span className="w-2 h-2 rounded-full bg-[#fcee0a] animate-pulse"></span>
+            </div>
+            <div className="p-4 flex-1 data-stream font-mono text-slate-300 min-h-[400px]">
+              {logs.length === 0 ? (
+                <div className="opacity-50 italic">Waiting for telemetry...</div>
+              ) : (
+                logs.map((log, i) => (
+                  <div key={i} className="log-entry mb-2">
+                    {log}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
       </div>
 
-      {/* Footer */}
-      <footer className="max-w-7xl mx-auto mt-12 border-t border-slate-800/50 pt-6 flex flex-col md:flex-row justify-between text-slate-600 text-xs tracking-widest">
-        <span>DEV: MUHAMMAD ABDULLAH // FA23-BCE-049</span>
-        <span>COMSATS UNIVERSITY LAHORE // CE DEPT</span>
+      <footer className="max-w-7xl mx-auto mt-16 pt-6 flex justify-between text-slate-600 text-[10px] tracking-widest border-t border-slate-800 uppercase font-bold">
+        <span>AUTHOR: ABDULLAH // FA23-BCE-049</span>
+        <span className="flex items-center gap-2">
+          <span>SECURE_NODE</span>
+          <span className="inline-block w-3 h-3 border border-slate-600 bg-slate-800"></span>
+        </span>
       </footer>
     </main>
   );

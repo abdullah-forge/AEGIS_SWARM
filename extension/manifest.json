@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "AEGIS-SWARM Companion",
+  "version": "1.0",
+  "description": "Scan text and URLs using AEGIS-SWARM Threat Triage.",
+  "permissions": ["contextMenus", "activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "https://*.onrender.com/*"
+  ]
+}
